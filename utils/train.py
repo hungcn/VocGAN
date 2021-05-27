@@ -13,18 +13,18 @@ from utils.stft_loss import MultiResolutionSTFTLoss
 
 def num_params(model, print_out=True):
     parameters = filter(lambda p: p.requires_grad, model.parameters())
-    parameters = sum([np.prod(p.size()) for p in parameters]) / 1_000_000
+    parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
     if print_out:
         print('Trainable Parameters: %.3fM' % parameters)
 
-def train(args, pt_dir, chkpt_path, trainloader, valloader, writer, logger, hp, hp_str):
+def train(args, pt_dir, chkpt_path, train_loader, val_loader, writer, logger, hp, hp_str):
     model_g = ModifiedGenerator(hp.audio.n_mel_channels, hp.model.n_residual_layers,
                         ratios=hp.model.generator_ratio, mult = hp.model.mult,
                         out_band = hp.model.out_channels).cuda()
-    print("Generator : \n")
+    print("Generator : ")
     num_params(model_g)
     model_d = MultiScaleDiscriminator().cuda()
-    print("Discriminator : \n")
+    print("Discriminator : ")
     num_params(model_d)
     optim_g = torch.optim.Adam(model_g.parameters(),
         lr=hp.train.adam.lr, betas=(hp.train.adam.beta1, hp.train.adam.beta2))
@@ -70,15 +70,14 @@ def train(args, pt_dir, chkpt_path, trainloader, valloader, writer, logger, hp, 
         for epoch in itertools.count(init_epoch+1):
             if epoch % hp.log.validation_interval == 0:
                 with torch.no_grad():
-                    validate(hp, args, model_g, model_d, valloader, stft_loss, criterion, writer, step)
+                    validate(hp, args, model_g, model_d, val_loader, stft_loss, criterion, writer, step)
 
-            trainloader.dataset.shuffle_mapping()
-            loader = tqdm.tqdm(trainloader, desc='Loading train data')
+            train_loader.dataset.shuffle_mapping()
+            loader = tqdm.tqdm(train_loader, desc='Loading train data')
             avg_g_loss = []
             avg_d_loss = []
             avg_adv_loss = []
-            for (melG, audioG), \
-                (melD, audioD) in loader:
+            for (melG, audioG), (melD, audioD) in loader:
                 melG = melG.cuda()      # torch.Size([16, 80, 64])
                 audioG = audioG.cuda()  # torch.Size([16, 1, 16000])
                 melD = melD.cuda()      # torch.Size([16, 80, 64])
@@ -87,9 +86,6 @@ def train(args, pt_dir, chkpt_path, trainloader, valloader, writer, logger, hp, 
                 optim_g.zero_grad()
                 fake_audio = model_g(melG)  # torch.Size([16, 1, 12800])
                 fake_audio = fake_audio[:, :, :hp.audio.segment_length]
-
-
-
 
                 sc_loss, mag_loss = stft_loss(fake_audio[:, :, :audioG.size(2)].squeeze(1), audioG.squeeze(1))
                 loss_g = sc_loss + mag_loss
@@ -154,7 +150,7 @@ def train(args, pt_dir, chkpt_path, trainloader, valloader, writer, logger, hp, 
                 loss_g = loss_g.item()
                 avg_g_loss.append(loss_g)
                 avg_d_loss.append(loss_d_avg)
-                avg_adv_loss.append(adv_loss.item())
+                avg_adv_loss.append(adv_loss)
                 if any([loss_g > 1e8, math.isnan(loss_g), loss_d_avg > 1e8, math.isnan(loss_d_avg)]):
                     logger.error("loss_g %.01f loss_d_avg %.01f at step %d!" % (loss_g, loss_d_avg, step))
                     raise Exception("Loss exploded")

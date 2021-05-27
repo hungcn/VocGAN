@@ -37,13 +37,13 @@ def main(args):
             denoiser = Denoiser(model).cuda()
             audio = denoiser(audio, 0.01)
         audio = audio.squeeze()
-        audio = audio[:-(hp.audio.hop_length*10)]
+        audio = audio[:-(hp.audio.hop_length*9)]
         audio = MAX_WAV_VALUE * audio
         audio = audio.clamp(min=-MAX_WAV_VALUE, max=MAX_WAV_VALUE-1)
         audio = audio.short()
         audio = audio.cpu().detach().numpy()
 
-        out_path = args.input.replace('.npy', '_reconstructed_epoch%04d.wav' % checkpoint['epoch'])
+        out_path = args.input.replace('.npy', '_gen_epoch%04d.wav' % checkpoint['epoch'])
         write(out_path, hp.audio.sampling_rate, audio)
 
 
@@ -55,7 +55,7 @@ if __name__ == '__main__':
                         help="path of checkpoint pt file for evaluation")
     parser.add_argument('-i', '--input', type=str, required=True,
                         help="directory of mel-spectrograms to invert into raw audio. ")
-    parser.add_argument('-d', action='store_true', help="denoising ")
+    parser.add_argument('-d', default=True, action='store_true', help="denoising ")
     args = parser.parse_args()
 
     main(args)

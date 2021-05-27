@@ -1,14 +1,15 @@
 data: # root path of train/validation data (either relative/absoulte path is ok)
-  train: 'H:\Deepsync\backup\deepsync\LJSpeech-1.1\wavs'
-  validation: 'H:\Deepsync\backup\deepsync\LJSpeech-1.1\valid'
-  mel_path: 'H:\Deepsync\backup\fastspeech\data\mels'
+  train_file: '../vivos/train/train.txt'
+  val_file: '../vivos/test/test.txt'
+  train_dir: '../vivos/train'
+  val_dir: '../vivos/test'
   eval_path: ''
 ---
 train:
   rep_discriminator: 1
   discriminator_train_start_steps: 100000
   num_workers: 8
-  batch_size: 16
+  batch_size: 32
   optimizer: 'adam'
   adam:
     lr: 0.0001
@@ -22,7 +23,7 @@ audio:
   filter_length: 1024
   hop_length: 256 # WARNING: this can't be changed.
   win_length: 1024
-  sampling_rate: 22050
+  sampling_rate: 16000
   mel_fmin: 0.0
   mel_fmax: 8000.0
 ---
@@ -56,5 +57,5 @@ log:
   summary_interval: 1
   validation_interval: 5
   save_interval: 20
-  chkpt_dir: 'chkpt'
+  chkpt_dir: 'checkpoints'
   log_dir: 'logs'

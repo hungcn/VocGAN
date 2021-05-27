@@ -1,11 +1,25 @@
 import os
 import glob
 import torch
+import torch.nn.functional as F
 import random
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
 import torchaudio
 from utils.utils import read_wav_np
+
+
+def get_dataset_filelist(hp, train):
+    if train:
+        with open(hp.data.train_file, 'r', encoding='utf-8') as fi:
+            train_files = [os.path.join(hp.data.train_dir, 'waves', x.split('|')[0])
+                            for x in fi.read().split('\n') if len(x) > 0]
+        return train_files
+    else:
+        with open(hp.data.val_file, 'r', encoding='utf-8') as fi:
+            val_files = [os.path.join(hp.data.val_dir, 'waves', x.split('|')[0])
+                            for x in fi.read().split('\n') if len(x) > 0]
+        return val_files
 
 
 def create_dataloader(hp, args, train):
@@ -24,12 +38,10 @@ class MelFromDisk(Dataset):
         self.hp = hp
         self.args = args
         self.train = train
-        self.path = hp.data.train if train else hp.data.validation
-        self.wav_list = glob.glob(os.path.join(self.path, '**', '*.wav'), recursive=True)
-        #print("Wavs path :", self.path)
-        #print(self.hp.data.mel_path)
-        #print("Length of wavelist :", len(self.wav_list))
-        self.mel_segment_length = hp.audio.segment_length // hp.audio.hop_length + 2
+        self.data_dir = hp.data.train_dir if train else hp.data.val_dir
+        self.wav_list = get_dataset_filelist(hp, train)
+        print("Path :", self.data_dir)
+        print("Length of wavelist :", len(self.wav_list))
         self.mapping = [i for i in range(len(self.wav_list))]
 
     def __len__(self):
@@ -48,26 +60,32 @@ class MelFromDisk(Dataset):
         random.shuffle(self.mapping)
 
     def my_getitem(self, idx):
-        wavpath = self.wav_list[idx]
-        id = os.path.basename(wavpath).split(".")[0]
+        wav_path = self.wav_list[idx]
+        file_name = os.path.basename(wav_path).split(".")[0]
+        speaker = file_name.split('_')[0]
 
-        mel_path = "{}/{}.npy".format(self.hp.data.mel_path, id)
+        mel_dir = os.path.join(self.data_dir, 'mels', speaker)
+        mel_path = "{}/{}.npy".format(mel_dir, file_name)
 
-        sr, audio = read_wav_np(wavpath)
-        if len(audio) < self.hp.audio.segment_length + self.hp.audio.pad_short:
-            audio = np.pad(audio, (0, self.hp.audio.segment_length + self.hp.audio.pad_short - len(audio)), \
-                    mode='constant', constant_values=0.0)
+        _, audio = read_wav_np(wav_path)
 
         audio = torch.from_numpy(audio).unsqueeze(0)
-        # mel = torch.load(melpath).squeeze(0) # # [num_mel, T]
-
         mel = torch.from_numpy(np.load(mel_path))
 
         if self.train:
-            max_mel_start = mel.size(1) - self.mel_segment_length
-            mel_start = random.randint(0, max_mel_start)
-            mel_end = mel_start + self.mel_segment_length
+            mel_seg_length = int(self.hp.audio.segment_length / self.hp.audio.hop_length) + 2
+            gap = mel.size(-1) - mel_seg_length
+            if gap < 0:
+                gap = -gap
+                mel = F.pad(mel, (0, gap), mode='constant')
+
+            mel_start = random.randint(0, mel.size(-1) - mel_seg_length)
+            mel_end = mel_start + mel_seg_length
             mel = mel[:, mel_start:mel_end]
+
+            if audio.size(-1) < self.hp.audio.segment_length + self.hp.audio.pad_short:
+                audio = F.pad(audio, (0, self.hp.audio.segment_length + self.hp.audio.pad_short - audio.size(-1)), \
+                        mode='constant', value=0.0)
 
             audio_start = mel_start * self.hp.audio.hop_length
             audio = audio[:, audio_start:audio_start+self.hp.audio.segment_length]
@@ -78,7 +96,7 @@ class MelFromDisk(Dataset):
 
 def collate_fn(batch):
 
-    sr = 22050
+    sr = 16000
     # perform padding and conversion to tensor
     mels_g = [x[0][0] for x in batch]
     audio_g = [x[0][1] for x in batch]

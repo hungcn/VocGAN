@@ -19,10 +19,10 @@ def main(hp, args):
                         mel_fmax=hp.audio.mel_fmax)
 
     wav_files = glob.glob(os.path.join(args.data_path, '**', '*.wav'), recursive=True)
-    mel_path = hp.data.mel_path
+    mel_dir = os.path.joint(os.path.split(args.data_path)[0], 'mels')
 
     # Create all folders
-    os.makedirs(mel_path, exist_ok=True)
+    os.makedirs(mel_dir, exist_ok=True)
     for wavpath in tqdm.tqdm(wav_files, desc='preprocess wav to mel'):
         sr, wav = read_wav_np(wavpath)
         assert sr == hp.audio.sampling_rate, \
@@ -37,9 +37,9 @@ def main(hp, args):
         mel = stft.mel_spectrogram(wav)  # mel [1, num_mel, T]
 
         mel = mel.squeeze(0)  # [num_mel, T]
-        id = os.path.basename(wavpath).split(".")[0]
-        np.save('{}/{}.npy'.format(mel_path, id), mel.numpy(), allow_pickle=False)
-        #torch.save(mel, melpath)
+        name = os.path.basename(wavpath).split(".")[0]
+        mel_path = os.path.join(mel_dir, name.split('_')[0])
+        np.save('{}/{}.npy'.format(mel_path, name), mel.numpy(), allow_pickle=False)
 
 
 if __name__ == '__main__':
